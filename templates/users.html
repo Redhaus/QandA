@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+
+{% block title %}User Settings{% endblock %}
+
+{% block nav_user %}active{% endblock %}
+
+
+{% block content %}
+
+
+
+    <div class="container theme-showcase" role="main">
+
+        <div class="page-header">
+            <h1>Users</h1>
+            <h6>Click to promote to expert</h6>
+        </div>
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="list-group">
+
+                    {% for users in all_users %}
+                        <a href="{{ url_for('promote', user_id=users['id'] )}}" class="list-group-item {% if users.expert == 1 %}
+                              active"
+                        {% endif%} >
+                            <h4 class="list-group-item-heading">{{ users.name }}</h4>
+                        </a>
+                    {% endfor %}
+
+
+
+                </div>
+            </div><!-- /.col-lg-12 -->
+        </div>
+
+    </div> <!-- /container -->
+
+
+{% endblock %}

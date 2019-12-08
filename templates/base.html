@@ -1,0 +1,77 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+    <title>  {% block title %}{% endblock %} </title>
+
+
+
+    <!-- Bootstrap core CSS -->
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+
+    <link href="{{ url_for('static', filename='theme.css') }}" rel="stylesheet">
+</head>
+
+<body>
+
+
+
+
+
+
+<!-- Fixed navbar -->
+<nav class="navbar navbar-inverse navbar-fixed-top">
+    <div class="container">
+        <div class="navbar-header">
+            <a class="navbar-brand" href="/">Questions & Answers</a>
+        </div>
+        <div id="navbar" class="navbar-collapse collapse">
+            <ul class="nav navbar-nav">
+                <li class="{% block nav_home %}{% endblock %}"><a href="{{ url_for('home') }}">Home</a></li>
+{#                if logged out allow registration or login#}
+                {% if not user %}
+                    <li class="{% block nav_login %}{% endblock %}"><a href="{{ url_for('login') }}">Login</a></li>
+                    <li class="{% block nav_register %}{% endblock %}"><a href="{{ url_for('register') }}">Register</a></li>
+                {% endif %}
+
+{#                if user but not expert or admin they can ask questions#}
+                {% if user and user['admin'] == 0 and user['expert'] == 0 %}
+                    <li class="{% block nav_ask %}{% endblock %}" ><a href="{{ url_for('ask') }}">Ask Questions</a></li>
+                {% endif %}
+
+{#                if they are an expert they can answer questions#}
+                {% if user and user['expert'] == 1 %}
+                    <li class="{% block nav_unanswered %}{% endblock %}"><a href="{{ url_for('unanswered') }}">Answer Questions</a></li>
+                {% endif %}
+
+{#                if they are admin they can set up user#}
+                {% if user and user['admin'] == 1 %}
+                    <li class="{% block nav_user %}{% endblock %}"><a href="{{ url_for('users') }}">User Setup</a></li>
+                {% endif %}
+
+                {% if user %}
+                    <li class="{% block nav_logout %}{% endblock %}"><a href="{{ url_for('logout') }}">Logout</a></li>
+                {% endif %}
+
+            </ul>
+        </div><!--/.nav-collapse -->
+    </div>
+</nav>
+
+
+
+
+
+
+{% block content %}
+
+{% endblock %}
+
+
+</body>
+</html>
