@@ -9,18 +9,23 @@ app.config['SECRET_KEY'] = os.urandom(24)
 
 # add decorators to secure routes
 
-# fires after ever route change and request is made to close db connection
+# fires after every route change and request is made to close db connection
 @app.teardown_appcontext
 def close_db(error):
-    print('teardown fired')
-    if hasattr(g, 'sqlite_db'):
-        g.sqlite_db.close()
+    # print('teardown fired')
+
+    # close cursor then close connection after every action
+    if hasattr(g, 'postgres_db_cur'):
+        g.postgres_db_cur.close()
+
+    if hasattr(g, 'postgres_db_conn'):
+        g.postgres_db_conn.close()
 
 
 # check user function for login and registration
 def check_user(db, name):
-    reg_user_cur = db.execute('select name from users where name = ?', [name])
-    return reg_user_cur.fetchone()
+    db.execute('select name from users where name = %s', (name,))
+    return db.fetchone()
 
 
 # check if user is logged in
@@ -35,10 +40,14 @@ def get_current_user():
         user = session['user']
 
         db = get_db()
-        user_cur = db.execute('select id, name, password, expert, admin '
-                              'from users where name = ?', [user])
 
-        user_result = user_cur.fetchone()
+        # fetch results on curser
+        # accepts tuples instead of array vars so this syntax is needed (user, )
+        # user %s instead of ?
+        db.execute('select id, name, password, expert, admin '
+                   'from users where name = %s', (user,))
+
+        user_result = db.fetchone()
         # g.admin = user_result['admin']
         # g.expert = user_result['expert']
 
@@ -62,18 +71,17 @@ def home():
     # but give that reference a variable by assigning it as well.
     # askers.name as askers_name
 
-    questions_cur = db.execute('select questions.question_text, '
-                               'questions.id as question_id, '
-                               'askers.name as asker_name, '
-                               'experts.name as expert_name '
-                               'from questions '
-                               'join users as askers '
-                               'on askers.id = questions.asked_by_id '
-                               'join users as experts '
-                               'on experts.id = questions.expert_id '
-                               'where answer_text not null')
+    db.execute('''select 
+                      questions.id as question_id, 
+                      questions.question_text, 
+                      askers.name as asker_name, 
+                      experts.name as expert_name 
+                  from questions 
+                  join users as askers on askers.id = questions.asked_by_id 
+                  join users as experts on experts.id = questions.expert_id 
+                  where questions.answer_text is not null''')
 
-    questions = questions_cur.fetchall()
+    questions = db.fetchall()
 
     return render_template('home.html', user=user, questions=questions)
 
@@ -105,9 +113,9 @@ def register():
             hashed_password = generate_password_hash(password, method='sha256')
 
             # save new user to db
-            db.execute('insert into users (name, password, expert, admin) '
-                       'values (?, ?, ?, ?)', [name, hashed_password, '0', '0'])
-            db.commit()
+            db.execute('''insert into users (name, password, expert, admin)
+                          values (%s, %s, %s, %s)''', (name, hashed_password, False, False))
+
             session['user'] = name
 
         return redirect(url_for('home'))
@@ -129,9 +137,9 @@ def login():
         password = request.form['password']
 
         # query db with user name
-        user_cur = db.execute('select id, name, password '
-                              'from users where name = ?', [name])
-        user_result = user_cur.fetchone()
+        db.execute('''select id, name, password 
+                      from users where name = %s''', (name,))
+        user_result = db.fetchone()
 
         # if username is incorrect it will return with user incorrent return
         if user_result:
@@ -154,17 +162,17 @@ def question(question_id):
     user = get_current_user()
 
     db = get_db()
-    question_cur = db.execute('select question_text, answer_text, '
-                              'asker.name as asker_name, '
-                              'expert.name as expert_name '
-                              'from questions '
-                              'inner join users as asker '
-                              'on asker.id = questions.asked_by_id '
-                              'inner join users as expert '
-                              'on expert.id = questions.expert_id '
-                              'where questions.id = ?', [question_id])
+    db.execute('''select question_text, answer_text, 
+                  asker.name as asker_name, 
+                  expert.name as expert_name 
+                  from questions 
+                  inner join users as asker 
+                  on asker.id = questions.asked_by_id 
+                  inner join users as expert 
+                  on expert.id = questions.expert_id 
+                  where questions.id = %s''', (question_id,))
 
-    question = question_cur.fetchone()
+    question = db.fetchone()
     return render_template('question.html', user=user, question=question)
 
 
@@ -182,7 +190,7 @@ def answer(question_id):
     if not user:
         return redirect(url_for('login'))
 
-    if user['expert'] == 0:
+    if user['expert'] == False:
         return redirect(url_for('no_access'))
 
     db = get_db()
@@ -191,14 +199,14 @@ def answer(question_id):
         answer = request.form['answer'].strip()
         # return f"answer: {answer} id: {question_id}"
 
-        db.execute('update questions set answer_text = ? where id = ?', [answer, question_id])
-        db.commit()
+        db.execute('update questions set answer_text = %s where id = %s', (answer, question_id))
+
         return redirect(url_for('unanswered'))
 
-    question_cur = db.execute('select id, question_text, answer_text '
-                              'from questions '
-                              'where id = ?', [question_id])
-    question = question_cur.fetchone()
+    db.execute('''select id, question_text, answer_text
+                              from questions
+                              where id = %s''', (question_id,))
+    question = db.fetchone()
 
     return render_template('answer.html', question=question, user=user)
 
@@ -213,8 +221,8 @@ def ask():
 
     # connect to db and fetch all experts
     db = get_db()
-    user_cur = db.execute('select * from users where expert = 1')
-    experts = user_cur.fetchall()
+    db.execute('select * from users where expert = True')
+    experts = db.fetchall()
 
     # if post get inputs from form and save question, expert and user to db
     # then return them to the home screen
@@ -222,9 +230,9 @@ def ask():
         question = request.form['question']
         expert_id = request.form['expert_id']
 
-        db.execute('insert into questions (question_text, asked_by_id, expert_id) '
-                   'values (?,?,?)', [question, user['id'], expert_id])
-        db.commit()
+        db.execute('''insert into questions (question_text, asked_by_id, expert_id)
+                        values (%s,%s,%s)''', (question, user['id'], expert_id))
+
         return redirect(url_for('home'))
 
     # render template passing in user and experts list
@@ -239,19 +247,19 @@ def unanswered():
     if not user:
         return redirect(url_for('login'))
 
-    if user['expert'] == 0:
+    if user['expert'] == False:
         return redirect(url_for('no_access'))
 
     user_id = user['id']
 
     db = get_db()
-    question_cur = db.execute('select questions.id, question_text, expert_id, users.name as name '
-                              'from questions '
-                              'inner join users '
-                              'on asked_by_id = users.id '
-                              'where questions.answer_text is null '
-                              'and expert_id = ?', [user_id])
-    question_data = question_cur.fetchall()
+    db.execute('''select questions.id, question_text, expert_id, users.name as name 
+                  from questions 
+                  inner join users
+                  on asked_by_id = users.id
+                  where questions.answer_text is null
+                  and expert_id = %s''', (user_id,))
+    question_data = db.fetchall()
 
     return render_template('unanswered.html', user=user, questions=question_data)
 
@@ -265,13 +273,13 @@ def users():
     if not user:
         return redirect(url_for('login'))
 
-    if user['admin'] == 0:
+    if user['admin'] == False:
         return redirect(url_for('no_access'))
 
     # fetch all users
     db = get_db()
-    users_cur = db.execute('select id, name, expert, admin from users')
-    all_users = users_cur.fetchall()
+    db.execute('select id, name, expert, admin from users')
+    all_users = db.fetchall()
 
     # pass users to users template
     return render_template('users.html', user=user, all_users=all_users)
@@ -297,21 +305,20 @@ def promote(user_id):
     if not user:
         return redirect(url_for('login'))
 
-    if user['admin'] == 0:
+    if user['admin'] == False:
         return redirect(url_for('no_access'))
 
     # fetch user info
     db = get_db()
-    user_cur = db.execute('select * from users where id = ?', [user_id])
-    user = user_cur.fetchone()
+    db.execute('select * from users where id = %s', (user_id,))
+    user = db.fetchone()
 
     # toggle expert status
-    if user['expert'] == 1:
-        db.execute('update users set expert = 0 where id = ?', [user_id])
-        db.commit()
+    if user['expert'] == True:
+        db.execute('update users set expert = False where id = %s', (user_id,))
+
     else:
-        db.execute('update users set expert = 1 where id = ?', [user_id])
-        db.commit()
+        db.execute('update users set expert = True where id = %s', (user_id,))
 
     # reload users with updated values
     return redirect(url_for('users'))
