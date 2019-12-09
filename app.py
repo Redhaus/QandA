@@ -4,7 +4,7 @@ from database import get_db
 import os
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.urandom(24)
+app.config['SECRET_KEY'] = b'\xdd\xee\x02\x0f]^7`p\x97\xe8w\x18\r%\xa0\xf4\xe8\xa4\x975\xfbl\xe3'
 
 
 # add decorators to secure routes
